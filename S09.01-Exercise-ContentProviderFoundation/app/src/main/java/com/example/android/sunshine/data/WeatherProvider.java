@@ -18,6 +18,7 @@ package com.example.android.sunshine.data;
 import android.annotation.TargetApi;
 import android.content.ContentProvider;
 import android.content.ContentValues;
+import android.content.UriMatcher;
 import android.database.Cursor;
 import android.net.Uri;
 import android.support.annotation.NonNull;
@@ -34,21 +35,37 @@ import android.support.annotation.NonNull;
  */
 public class WeatherProvider extends ContentProvider {
 
-//  TODO (5) Create static constant integer values named CODE_WEATHER & CODE_WEATHER_WITH_DATE to identify the URIs this ContentProvider can handle
+    public static final int CODE_WEATHER = 100;
+    public static final int CODE_WEATHER_WITH_DATE = 101;
 
-//  TODO (7) Instantiate a static UriMatcher using the buildUriMatcher method
+    private static UriMatcher sUriMatcher = buildUriMatcher();
+    private WeatherDbHelper mOpenHelper;
 
-    WeatherDbHelper mOpenHelper;
+    private static UriMatcher buildUriMatcher() {
+        final UriMatcher matcher = new UriMatcher(UriMatcher.NO_MATCH);
+        final String authority = WeatherContract.CONTENT_AUTHORITY;
 
-//  TODO (6) Write a method called buildUriMatcher where you match URI's to their numeric ID
+        /*
+         * For each type of URI you want to add, create a corresponding code. Preferably, these are
+         * constant fields in your class so that you can use them throughout the class and you no
+         * they aren't going to change. In Sunshine, we use CODE_WEATHER or CODE_WEATHER_WITH_DATE.
+         */
+        /* This URI is content://com.example.android.sunshine/weather/ */
+        matcher.addURI(authority, WeatherContract.PATH_WEATHER, CODE_WEATHER);
 
-//  TODO (1) Implement onCreate
+        /*
+         * This URI would look something like content://com.example.android.sunshine/weather/1472214172
+         * The "/#" signifies to the UriMatcher that if PATH_WEATHER is followed by ANY number,
+         * that it should return the CODE_WEATHER_WITH_DATE code
+         */
+        matcher.addURI(authority, WeatherContract.PATH_WEATHER + "/#", CODE_WEATHER_WITH_DATE);
+        return matcher;
+    }
+
     @Override
     public boolean onCreate() {
-//      TODO (2) Within onCreate, instantiate our mOpenHelper
-
-//      TODO (3) Return true from onCreate to signify success performing setup
-        return false;
+        mOpenHelper = new WeatherDbHelper(getContext());
+        return true;
     }
 
     /**
@@ -69,7 +86,6 @@ public class WeatherProvider extends ContentProvider {
         throw new RuntimeException("Student, you need to implement the bulkInsert mehtod!");
     }
 
-//  TODO (8) Provide an implementation for the query method
     /**
      * Handles query requests from clients. We will use this method in Sunshine to query for all
      * of our weather data as well as to query for the weather on a particular day.
@@ -88,11 +104,53 @@ public class WeatherProvider extends ContentProvider {
     @Override
     public Cursor query(@NonNull Uri uri, String[] projection, String selection,
                         String[] selectionArgs, String sortOrder) {
-        throw new RuntimeException("Student, implement the query method!");
 
-//      TODO (9) Handle queries on both the weather and weather with date URI
+        Cursor cursor;
+        switch (sUriMatcher.match(uri)) {
+            case CODE_WEATHER: {
+                cursor = mOpenHelper.getReadableDatabase().query(
+                        WeatherContract.WeatherEntry.TABLE_NAME,
+                        projection,
+                        selection,
+                        selectionArgs,
+                        null,
+                        null,
+                        sortOrder
+                );
+                break;
+            }
+            case CODE_WEATHER_WITH_DATE: {
+                /*
+                 * In order to determine the date associated with this URI, we look at the last
+                 * path segment. In the comment above, the last path segment is 1472214172 and
+                 * represents the number of seconds since the epoch, or UTC time.
+                 */
+                String normalizedUtcDateString = uri.getLastPathSegment();
 
-//      TODO (10) Call setNotificationUri on the cursor and then return the cursor
+                /*
+                 * The query method accepts a string array of arguments, as there may be more
+                 * than one "?" in the selection statement. Even though in our case, we only have
+                 * one "?", we have to create a string array that only contains one element
+                 * because this method signature accepts a string array.
+                 */
+                String[] selectionArguments = new String[]{normalizedUtcDateString};
+                cursor = mOpenHelper.getReadableDatabase().query(
+                        WeatherContract.WeatherEntry.TABLE_NAME,
+                        projection,
+                        WeatherContract.WeatherEntry.COLUMN_DATE + " = ?",
+                        selectionArguments,
+                        null,
+                        null,
+                        sortOrder
+                );
+                break;
+
+            }
+            default:
+                throw new UnsupportedOperationException("unknown uri: " + uri);
+        }
+        cursor.setNotificationUri(getContext().getContentResolver(), uri);
+        return cursor;
     }
 
     /**
